@@ -11,6 +11,10 @@ on:
           - GitHub Packages
           - Docker Hub
           
+env:
+  DOCKERHUB_TAG: sztuxp/caddy-all-plugins
+  GHCR_TAG: ghcr.io/${{ github.repository }}/caddy-all-plugins
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -32,7 +36,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         
-      # === 新增的明确登录步骤 ===
       - name: Log in to GitHub Container Registry
         if: ${{ github.event.inputs.registry == 'GitHub Packages' }}
         uses: docker/login-action@v3
@@ -47,9 +50,8 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      # === 结束新增 ===
       
-      - name: Build and push Docker image
+      - name: Build and push ${{ matrix.platform }} image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -57,5 +59,44 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ${{ github.event.inputs.registry == 'GitHub Packages' && format('ghcr.io/{0}/caddy-all-plugins:latest', github.repository) || '' }}
-            ${{ github.event.inputs.registry == 'Docker Hub' && format('{0}/caddy-all-plugins:latest', secrets.DOCKERHUB_USERNAME) || '' }}
+            ${{ github.event.inputs.registry == 'GitHub Packages' && format('{0}-{1}', env.GHCR_TAG, matrix.platform) || '' }}
+            ${{ github.event.inputs.registry == 'Docker Hub' && format('{0}-{1}', env.DOCKERHUB_TAG, matrix.platform) || '' }}
+
+  create-manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: ${{ github.event.inputs.registry == 'GitHub Packages' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Log in to Docker Hub
+        if: ${{ github.event.inputs.registry == 'Docker Hub' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - name: Create and push Docker manifest
+        run: |
+          if [ "${{ github.event.inputs.registry }}" == "Docker Hub" ]; then
+            docker manifest create ${{ env.DOCKERHUB_TAG }}:latest ${{ env.DOCKERHUB_TAG }}-linux/amd64 ${{ env.DOCKERHUB_TAG }}-linux/arm64
+            docker manifest push ${{ env.DOCKERHUB_TAG }}:latest
+          elif [ "${{ github.event.inputs.registry }}" == "GitHub Packages" ]; then
+            docker manifest create ${{ env.GHCR_TAG }}:latest ${{ env.GHCR_TAG }}-linux/amd64 ${{ env.GHCR_TAG }}-linux/arm64
+            docker manifest push ${{ env.GHCR_TAG }}:latest
+          fi
