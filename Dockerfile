@@ -1,36 +1,23 @@
-# The `temp-builder` stage
-FROM --platform=$BUILDPLATFORM alpine AS temp-builder
+# 第一阶段: builder
+# 从一个轻量级基础镜像开始，用于复制二进制文件
+FROM --platform=$BUILDPLATFORM busybox AS builder
 
-# Set the working directory
-WORKDIR /app
+# 将宿主机构建上下文中的两个二进制文件复制到容器的 /app 目录下
+COPY caddy-amd64 /app/caddy-amd64
+COPY caddy-arm64 /app/caddy-arm64
 
-# Copy the binaries into the temporary build stage
-COPY caddy-amd64 caddy-amd64
-COPY caddy-arm64 caddy-arm64
-
-# Use ARG to get the target architecture from buildx
-ARG TARGETARCH
-
-# Based on the architecture, copy the correct binary to a temporary location
-RUN case "$TARGETARCH" in \
-        "amd64") cp caddy-amd64 /temp/caddy ;; \
-        "arm64") cp caddy-arm64 /temp/caddy ;; \
-        *) echo "Unsupported architecture: $TARGETARCH" && exit 1 ;; \
-    esac
-
-# The `final-builder` stage
+# 第二阶段: final
+# 从官方 Caddy 镜像的 builder-alpine 阶段开始
 FROM caddy:builder-alpine
 
-# Copy the single correct binary from the temp-builder stage
-COPY --from=temp-builder /temp/caddy /usr/bin/caddy
+# 从第一阶段复制正确的二进制文件到最终镜像
+ARG TARGETARCH
+COPY --from=builder /app/caddy-${TARGETARCH} /usr/bin/caddy
 
-# Set the final binary as executable
+# 确保二进制文件可执行
 RUN chmod +x /usr/bin/caddy
 
-# Set the default command and exposed ports
-ENTRYPOINT ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+# 保持 Caddy 的标准配置
 EXPOSE 80 443 2019
-
-# Define volumes for persistence
 VOLUME /data /config
 WORKDIR /srv
