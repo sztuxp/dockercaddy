@@ -1,10 +1,15 @@
-# 使用多架构基础镜像
 FROM alpine:latest
 
-# 根据构建平台选择对应的二进制文件
 ARG TARGETARCH
-COPY caddy-${TARGETARCH} /usr/local/bin/caddy
-RUN chmod +x /usr/local/bin/caddy
+
+RUN apk add --no-cache ca-certificates
+
+# 根据架构复制正确的二进制
+RUN case "$TARGETARCH" in \
+    "amd64")  cp caddy-amd64 /usr/local/bin/caddy ;; \
+    "arm64")  cp caddy-arm64 /usr/local/bin/caddy ;; \
+    *) echo "Unsupported architecture: $TARGETARCH" && exit 1 ;; \
+esac && chmod +x /usr/local/bin/caddy
 
 EXPOSE 80 443 2019
 
