@@ -24,7 +24,11 @@ jobs:
       
     strategy:
       matrix:
-        platform: [linux/amd64, linux/arm64]
+        include:
+          - platform: linux/amd64
+            tag_suffix: linux-amd64
+          - platform: linux/arm64
+            tag_suffix: linux-arm64
 
     steps:
       - name: Checkout repository
@@ -58,10 +62,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           file: ./Dockerfile
           push: true
-          # 修复了这里的标签格式，使用 replace 函数将斜杠替换为连字符
           tags: |
-            ${{ github.event.inputs.registry == 'GitHub Packages' && format('{0}:{1}', env.GHCR_TAG, replace(matrix.platform, '/', '-')) || '' }}
-            ${{ github.event.inputs.registry == 'Docker Hub' && format('{0}:{1}', env.DOCKERHUB_TAG, replace(matrix.platform, '/', '-')) || '' }}
+            ${{ github.event.inputs.registry == 'GitHub Packages' && format('{0}:{1}', env.GHCR_TAG, matrix.tag_suffix) || '' }}
+            ${{ github.event.inputs.registry == 'Docker Hub' && format('{0}:{1}', env.DOCKERHUB_TAG, matrix.tag_suffix) || '' }}
 
   create-manifest:
     needs: build
@@ -95,11 +98,9 @@ jobs:
       - name: Create and push Docker manifest
         run: |
           if [ "${{ github.event.inputs.registry }}" == "Docker Hub" ]; then
-            # 修复了这里的 manifest 命令，使用正确的标签格式
             docker manifest create ${{ env.DOCKERHUB_TAG }}:latest ${{ env.DOCKERHUB_TAG }}:linux-amd64 ${{ env.DOCKERHUB_TAG }}:linux-arm64
             docker manifest push ${{ env.DOCKERHUB_TAG }}:latest
           elif [ "${{ github.event.inputs.registry }}" == "GitHub Packages" ]; then
-            # 修复了这里的 manifest 命令，使用正确的标签格式
             docker manifest create ${{ env.GHCR_TAG }}:latest ${{ env.GHCR_TAG }}:linux-amd64 ${{ env.GHCR_TAG }}:linux-arm64
             docker manifest push ${{ env.GHCR_TAG }}:latest
           fi
