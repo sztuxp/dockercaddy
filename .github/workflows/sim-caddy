@@ -1,4 +1,4 @@
-name: Build sim-caddy
+name: Build simcaddy
 
 on:
   workflow_dispatch:
