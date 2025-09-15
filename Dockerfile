@@ -1,13 +1,28 @@
-# 使用一个轻量级的 Caddy 镜像作为基础
-FROM caddy:2.7.6-alpine
+# 第一阶段：下载并准备 Caddy 二进制文件
+FROM alpine:3.18 as downloader
 
-# Caddy 可执行文件将被复制到这个路径，我们假设它们在工作流的某个子目录中
-# ARG TARGETARCH 变量由 github actions 自动提供，根据目标平台为 amd64 或 arm64
+# Docker Buildx 会自动为 TARGETARCH 赋值 (amd64, arm64)
 ARG TARGETARCH
 
-# 将编译好的 Caddy 可执行文件复制到镜像中
-# 假设在工作流中，我们下载并解压的二进制文件路径是 `./artifacts/caddy-binaries-linux-${TARGETARCH}/caddy-linux-${TARGETARCH}`
-COPY ./artifacts/caddy-binaries-linux-${TARGETARCH}/caddy-linux-${TARGETARCH} /usr/bin/caddy
+WORKDIR /tmp
+
+# 根据 TARGETARCH 变量下载对应的 Caddy 二进制文件
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+      curl -L "https://github.com/lxhao61/integrated-examples/releases/download/20250826/caddy-linux-amd64.tar.gz" -o caddy.tar.gz; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+      curl -L "https://github.com/lxhao61/integrated-examples/releases/download/20250826/caddy-linux-arm64.tar.gz" -o caddy.tar.gz; \
+    else \
+      echo "Unsupported architecture: $TARGETARCH"; exit 1; \
+    fi
+
+# 解压文件
+RUN tar -xzf caddy.tar.gz
+
+# 第二阶段：构建最终的 Caddy 镜像
+FROM caddy:2.7.6-alpine
+
+# 将第一阶段下载并解压的 Caddy 可执行文件复制到最终镜像中
+COPY --from=downloader /tmp/caddy /usr/bin/caddy
 
 # 验证 Caddy 是否正确复制
 RUN /usr/bin/caddy version
