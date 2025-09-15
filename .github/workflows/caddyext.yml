@@ -2,11 +2,7 @@ name: Build and Publish Caddy Docker Images
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version tag (e.g., v1.0.0)'
-        required: false
-        default: 'latest'
+
 
 env:
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
