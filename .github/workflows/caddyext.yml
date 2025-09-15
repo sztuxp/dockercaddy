@@ -49,21 +49,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu
 
-      - name: Set binary name
-        run: |
-          if [ "${{ matrix.platform.arm }}" != "" ]; then
-            echo "BINARY_NAME=caddy-linux-${{ matrix.platform.arch }}v${{ matrix.platform.arm }}" >> $GITHUB_ENV
-          else
-            echo "BINARY_NAME=caddy-linux-${{ matrix.platform.arch }}" >> $GITHUB_ENV
-          fi
-
       - name: Build Caddy for ${{ matrix.platform.arch }}
         run: |
           export GOOS=${{ matrix.platform.os }}
           export GOARCH=${{ matrix.platform.arch }}
           if [ "${{ matrix.platform.arm }}" != "" ]; then
             export GOARM=${{ matrix.platform.arm }}
+            BINARY_NAME="caddy-linux-${{ matrix.platform.arch }}v${{ matrix.platform.arm }}"
+          else
+            BINARY_NAME="caddy-linux-${{ matrix.platform.arch }}"
           fi
+          
+          echo "BINARY_NAME=$BINARY_NAME" >> $GITHUB_ENV
           
           go mod tidy
           CGO_ENABLED=0 go build -a -ldflags '-extldflags "-static"' -o $BINARY_NAME .
@@ -72,8 +69,8 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v3
         with:
-          name: caddy-${{ matrix.platform.os }}-${{ matrix.platform.arch }}${{ matrix.platform.arm != '' && format('v{0}', matrix.platform.arm) || '' }}
-          path: caddy-linux-${{ matrix.platform.arch }}${{ matrix.platform.arm != '' && format('v{0}', matrix.platform.arm) || '' }}
+          name: caddy-${{ matrix.platform.arch }}${{ matrix.platform.arm != '' && format('v{0}', matrix.platform.arm) || '' }}
+          path: ${{ env.BINARY_NAME }}
           if-no-files-found: error
 
   build-docker-images:
@@ -86,16 +83,20 @@ jobs:
           - os: linux
             arch: amd64
             docker_arch: amd64
+            artifact_name: amd64
           - os: linux
             arch: arm64
             docker_arch: arm64
+            artifact_name: arm64
           - os: linux
             arch: arm
             arm: 7
             docker_arch: arm
+            artifact_name: armv7
           - os: linux
             arch: 386
             docker_arch: 386
+            artifact_name: 386
 
     steps:
       - name: Checkout code
@@ -110,15 +111,34 @@ jobs:
       - name: Download binary artifact
         uses: actions/download-artifact@v3
         with:
-          name: caddy-${{ matrix.platform.os }}-${{ matrix.platform.arch }}${{ matrix.platform.arm != '' && format('v{0}', matrix.platform.arm) || '' }}
+          name: caddy-${{ matrix.platform.artifact_name }}
 
-      - name: Rename binary
+      - name: Rename and prepare binary
         run: |
-          mv caddy-linux-${{ matrix.platform.arch }}${{ matrix.platform.arm != '' && format('v{0}', matrix.platform.arm) || '' }} caddy
-          chmod +x caddy
-          ls -la caddy
+          # 根据架构重命名二进制文件
+          if [ "${{ matrix.platform.artifact_name }}" = "armv7" ]; then
+            BINARY_FILE="caddy-linux-armv7"
+          else
+            BINARY_FILE="caddy-linux-${{ matrix.platform.artifact_name }}"
+          fi
+          
+          # 如果文件不存在，尝试其他可能的名称
+          if [ ! -f "$BINARY_FILE" ]; then
+            BINARY_FILE=$(ls caddy-linux-* 2>/dev/null | head -1)
+          fi
+          
+          if [ -f "$BINARY_FILE" ]; then
+            mv "$BINARY_FILE" caddy
+            chmod +x caddy
+            ls -la caddy
+          else
+            echo "Error: Could not find binary file"
+            ls -la
+            exit 1
+          fi
 
       - name: Login to DockerHub
+        if: env.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != ''
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -129,7 +149,6 @@ jobs:
           cat > Dockerfile << 'EOF'
           FROM alpine:latest
           RUN apk --no-cache add ca-certificates tzdata
-          WORKDIR /root/
           COPY caddy /usr/bin/caddy
           RUN chmod +x /usr/bin/caddy
           RUN adduser -D -H -u 1001 caddy
@@ -141,7 +160,7 @@ jobs:
 
       - name: Get version tag
         run: |
-          if [ "${{ github.event.inputs.version }}" != "latest" ]; then
+          if [ "${{ github.event.inputs.version }}" != "latest" ] && [ "${{ github.event.inputs.version }}" != "" ]; then
             echo "VERSION_TAG=${{ github.event.inputs.version }}" >> $GITHUB_ENV
           else
             echo "VERSION_TAG=latest" >> $GITHUB_ENV
@@ -152,7 +171,7 @@ jobs:
         with:
           context: .
           platforms: linux/${{ matrix.platform.docker_arch }}
-          push: true
+          push: ${{ env.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.DOCKERHUB_REPO }}:${{ matrix.platform.docker_arch }}
             ${{ env.REGISTRY }}/${{ env.DOCKERHUB_REPO }}:${{ matrix.platform.docker_arch }}-${{ env.VERSION_TAG }}
@@ -161,6 +180,7 @@ jobs:
     name: Create Multi-arch Manifest
     needs: build-docker-images
     runs-on: ubuntu-latest
+    if: env.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != ''
 
     steps:
       - name: Set up Docker Buildx
@@ -174,7 +194,7 @@ jobs:
 
       - name: Get version tag
         run: |
-          if [ "${{ github.event.inputs.version }}" != "latest" ]; then
+          if [ "${{ github.event.inputs.version }}" != "latest" ] && [ "${{ github.event.inputs.version }}" != "" ]; then
             echo "VERSION_TAG=${{ github.event.inputs.version }}" >> $GITHUB_ENV
           else
             echo "VERSION_TAG=latest" >> $GITHUB_ENV
@@ -182,7 +202,7 @@ jobs:
 
       - name: Create and push manifest
         run: |
-          # Create manifest for latest tag
+          # Create manifest for specified version
           docker buildx imagetools create \
             --tag ${{ env.REGISTRY }}/${{ env.DOCKERHUB_REPO }}:${{ env.VERSION_TAG }} \
             ${{ env.REGISTRY }}/${{ env.DOCKERHUB_REPO }}:amd64 \
