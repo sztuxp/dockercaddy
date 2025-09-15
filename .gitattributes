@@ -1,2 +1,0 @@
-caddy-amd64 filter=lfs diff=lfs merge=lfs -text
-caddy-arm64 filter=lfs diff=lfs merge=lfs -text
