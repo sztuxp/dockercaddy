@@ -4,6 +4,9 @@ FROM alpine:3.18 as downloader
 # Docker Buildx 会自动为 TARGETARCH 赋值 (amd64, arm64)
 ARG TARGETARCH
 
+# **重点**：安装 curl
+RUN apk add --no-cache curl
+
 WORKDIR /tmp
 
 # 根据 TARGETARCH 变量下载对应的 Caddy 二进制文件
