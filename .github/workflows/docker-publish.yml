@@ -1,4 +1,4 @@
-name: Publish Caddy Docker Image
+name: Publish Caddy Docker Image from URL
 
 # 允许手动触发工作流
 on:
@@ -17,6 +17,8 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -24,22 +26,10 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Download AMD64 Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: caddy-binaries-linux-amd64
-          path: ./artifacts/caddy-binaries-linux-amd64
-
-      - name: Download ARM64 Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: caddy-binaries-linux-arm64
-          path: ./artifacts/caddy-binaries-linux-arm64
-
       - name: Build and Push Docker Images
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/caddy-custom:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/caddy-from-url:latest
