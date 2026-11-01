@@ -48,7 +48,7 @@ jobs:
         mkdir release-tmp
         export GOARCH=${{ matrix.config.GOARCH }} 
         export GOOS=${{ matrix.config.GOOS }} 
-        ~/go/bin/xcaddy build v2.8.4 \
+        ~/go/bin/xcaddy build v2.8.4 -v \
           --with github.com/caddyserver/forwardproxy=github.com/klzgrad/forwardproxy@naive \
           --with github.com/imgk/caddy-trojan \
           --with github.com/mholt/caddy-webdav \
