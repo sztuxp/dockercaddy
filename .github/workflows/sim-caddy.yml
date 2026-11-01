@@ -2,13 +2,13 @@ name: Build and Push Caddy Multi-Arch Image
 
 on:
   # 1. 当修改了 Dockerfile 或当前 yaml 文件并推送到主分支时自动触发
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - 'Dockerfile'
-      - '.github/workflows/docker-publish.yml'
+  #push:
+  #  branches:
+  #    - main
+  #    - master
+  #  paths:
+  #    - 'Dockerfile'
+  #    - '.github/workflows/docker-publish.yml'
 
   # 2. 支持在 GitHub Actions 页面手动触发，并可随时输入新的版本号
   workflow_dispatch:
