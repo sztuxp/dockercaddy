@@ -1,111 +1,86 @@
-name: Build simcaddy
+name: Build and Push Caddy Multi-Arch Image
 
 on:
-  workflow_dispatch:
+  # 1. 当推送到 main 分支且修改了 Dockerfile 或当前 yaml 时自动触发
+  push:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/docker-publish.yml'
+      - 'Caddyfile'
 
-  release:
-    types: 
-      - 'prereleased' 
-      - 'published' 
-      - 'released'
+  # 2. 支持在 GitHub Actions 页面手动点击运行，并可自定义版本号
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'lxhao61/integrated-examples 的 Release 版本号'
+        required: true
+        default: '20261024'
+        type: string
+
+env:
+  # 默认使用手动输入的版本号；如果是 push 自动触发，则使用 20261024
+  RELEASE_TAG: ${{ inputs.release_tag || '20261024' }}
+  # GHCR 镜像仓库地址
+  REGISTRY: ghcr.io
 
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-        - {
-            name: "linux-amd64",
-            GOARCH: amd64,
-            GOOS: linux,
-            release: true
-          }
-        - {
-            name: "linux-arm64",
-            GOARCH: arm64,
-            GOOS: linux,
-            release: true
-          }
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # 允许使用默认 GITHUB_TOKEN 推送镜像到 GHCR
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: 1. 检出仓库代码
+        uses: actions/checkout@v4
 
-    - name: Install go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.25'
-        check-latest: true
-        cache: false
+      - name: 2. 转小写处理仓库名称 (Docker 镜像名必须全小写)
+        id: repo_info
+        run: |
+          echo "repo_lower=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+          echo "owner_lower=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
 
-    - name: Install xcaddy
-      run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
-    
-    - name: Build caddy
-      run: |
-        mkdir release-tmp
-        export GOARCH=${{ matrix.config.GOARCH }} 
-        export GOOS=${{ matrix.config.GOOS }} 
-        ~/go/bin/xcaddy build v2.8.4 -v \
-          --with github.com/caddyserver/forwardproxy=github.com/klzgrad/forwardproxy@naive \
-          --with github.com/imgk/caddy-trojan \
-          --with github.com/mholt/caddy-webdav \
-          --with github.com/WeidiDeng/caddy-cloudflare-ip \
-          --with github.com/xcaddyplugins/caddy-trusted-cloudfront \
-          --with github.com/caddy-dns/cloudflare \
-          --with github.com/caddy-dns/duckdns \
-          --with github.com/caddy-dns/tencentcloud \
-          --with github.com/mholt/caddy-events-exec \
-          --with github.com/mholt/caddy-l4 \
-          --with github.com/caddyserver/jsonc-adapter \
-          --output ./release-tmp/caddy
+      - name: 3. 配置 QEMU 多架构模拟器 (用于 RUN /usr/bin/caddy version 验证 arm64)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
-    - name: Rename for Windows 
-      if: matrix.config.GOOS == 'windows'
-      run: |
-        mv ./release-tmp/caddy ./release-tmp/caddy.exe
-    
-    - name: Calculate Hash
-      run: |
-        cd ./release-tmp || exit 1
-        sha256sum * > sha256
+      - name: 4. 配置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Generate zip for Windows
-      if: matrix.config.GOOS == 'windows'
-      run: |
-        mkdir release-ready
-        cd ./release-tmp
-        zip -r ../release-ready/caddy-${{ matrix.config.name }}.zip *
-    
-    - name: Generate tar for other platform
-      if: matrix.config.GOOS != 'windows'
-      run: |
-        mkdir release-ready
-        cd ./release-tmp
-        tar -zcvf ../release-ready/caddy-${{ matrix.config.name }}.tar.gz *
+      # ---------------- 登录镜像仓库 ----------------
+      - name: 5. 登录 GitHub Container Registry (GHCR - 免配置密钥)
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload a Build Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: caddy-${{ github.sha }}-${{ matrix.config.name }}
-        path: ./release-ready/*
-        
-    - name: Upload to GitHub Release for Windows
-      uses: svenstaro/upload-release-action@v2
-      if: github.event_name == 'release' && matrix.config.release && matrix.config.GOOS == 'windows'
-      with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: ./release-ready/caddy-${{ matrix.config.name }}.zip
-        tag: ${{ github.ref }}
-        overwrite: true
-        
-    - name: Upload to GitHub Release for other platform
-      uses: svenstaro/upload-release-action@v2
-      if: github.event_name == 'release' && matrix.config.release && matrix.config.GOOS != 'windows'
-      with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: ./release-ready/caddy-${{ matrix.config.name }}.tar.gz
-        tag: ${{ github.ref }}
-        overwrite: true
+      # 【可选】如果你想同时或单独推送到 Docker Hub，取消下方注释，
+      # 并在仓库 Settings -> Secrets and variables -> Actions 中添加 DOCKERHUB_USERNAME 和 DOCKERHUB_TOKEN
+      # - name: 5.1 登录 Docker Hub
+      #   uses: docker/login-action@v3
+      #   with:
+      #     username: ${{ secrets.DOCKERHUB_USERNAME }}
+      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ---------------- 构建并推送双架构镜像 ----------------
+      - name: 6. 构建并推送 amd64 和 arm64 镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            RELEASE_TAG=${{ env.RELEASE_TAG }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.repo_info.outputs.repo_lower }}:${{ env.RELEASE_TAG }}
+            ${{ env.REGISTRY }}/${{ steps.repo_info.outputs.repo_lower }}:latest
+            # 如果启用了上方 Docker Hub 登录，可取消下方两行注释同时推送到 Docker Hub：
+            # ${{ secrets.DOCKERHUB_USERNAME }}/caddy:${{ env.RELEASE_TAG }}
+            # ${{ secrets.DOCKERHUB_USERNAME }}/caddy:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
