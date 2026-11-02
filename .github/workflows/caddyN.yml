@@ -34,30 +34,30 @@ jobs:
             GOOS: linux,
             release: true
           }
-        - {
-            name: "freebsd-amd64",
-            GOARCH: amd64,
-            GOOS: freebsd,
-            release: true
-          }
-        - {
-            name: "freebsd-arm64",
-            GOARCH: arm64,
-            GOOS: freebsd,
-            release: true
-          }
-        - {
-            name: "darwin-amd64",
-            GOARCH: amd64,
-            GOOS: darwin,
-            release: true
-          }
-        - {
-            name: "darwin-arm64",
-            GOARCH: arm64,
-            GOOS: darwin,
-            release: true
-          }
+        #- {
+        #    name: "freebsd-amd64",
+        #    GOARCH: amd64,
+        #    GOOS: freebsd,
+        #    release: true
+        #  }
+        #- {
+        #    name: "freebsd-arm64",
+        #    GOARCH: arm64,
+        #    GOOS: freebsd,
+        #    release: true
+        #  }
+        #- {
+        #    name: "darwin-amd64",
+        #    GOARCH: amd64,
+        #    GOOS: darwin,
+        #    release: true
+        #  }
+        #- {
+        #    name: "darwin-arm64",
+        #    GOARCH: arm64,
+        #    GOOS: darwin,
+        #    release: true
+        #  }
 
     steps:
     - name: Checkout
